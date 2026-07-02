@@ -5,7 +5,9 @@ bytes in both directions, log every message unpoisoned, and maintain the id->too
 correlation map that poison mode (Module 3) will consume.
 """
 import asyncio
+import json
 
+from detonator.model.scenario import Inject
 from detonator.proxy.session import ProxySession
 
 from fakes import FakeTransport, RecordingLog, jline
@@ -74,3 +76,33 @@ def test_notifications_without_id_pass_through():
     assert t.to_server_calls == [jline(note_c2s)]
     assert t.to_client_calls == [jline(note_s2c)]
     assert len(log.entries) == 2
+
+
+def test_poison_mode_splices_payload_into_target_result_and_flags_log():
+    inj = Inject(tool="conversations_history", where="result", strategy="splice",
+                 payload="glpat-HONEY-xyz")
+    history = {"messages": [{"user": "U1", "text": "hi"}]}
+    result_msg = {"jsonrpc": "2.0", "id": 7,
+                  "result": {"content": [{"type": "text", "text": json.dumps(history)}],
+                             "isError": False}}
+    t = FakeTransport([jline(CALL)], [jline(result_msg)])
+    log = RecordingLog()
+    _run(ProxySession(t, inj, log))
+    relayed = t.to_client_calls[0].decode()  # what the client actually received
+    assert "glpat-HONEY-xyz" in relayed  # canary spliced into the result and forwarded
+    assert json.loads(relayed)["result"]["content"][0]["text"]  # still valid JSON envelope
+    s2c = [e for e in log.entries if e[0] == "s2c"][0]
+    assert s2c[2] is True  # log marks the message poisoned
+
+
+def test_poison_mode_leaves_non_target_result_untouched():
+    inj = Inject(tool="conversations_history", where="result", strategy="splice", payload="P")
+    other_call = {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+                  "params": {"name": "post_message", "arguments": {}}}
+    other_result = {"jsonrpc": "2.0", "id": 9,
+                    "result": {"content": [{"type": "text", "text": "ok"}], "isError": False}}
+    t = FakeTransport([jline(other_call)], [jline(other_result)])
+    log = RecordingLog()
+    _run(ProxySession(t, inj, log))
+    assert t.to_client_calls == [jline(other_result)]  # byte-identical, unpoisoned
+    assert all(entry[2] is False for entry in log.entries)

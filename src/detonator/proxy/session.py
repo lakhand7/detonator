@@ -11,6 +11,7 @@ import asyncio
 import json
 
 from detonator.model.scenario import Inject
+from detonator.poison import get as get_strategy, should_poison
 from detonator.proxy.transport import Transport
 
 
@@ -36,6 +37,11 @@ class ProxySession:
     async def _pump_s2c(self) -> None:
         async for line in self.t.s2c():
             m = json.loads(line)
-            self._pending.pop(m.get("id"), None)  # correlation cleanup (poison consumes it in M3)
-            self.log.append("s2c", m)
-            await self.t.to_client(line)  # forward ORIGINAL bytes
+            tool = self._pending.pop(m.get("id"), None)  # correlated tool for this result
+            if self.inject and should_poison(m, tool, self.inject):
+                m = get_strategy(self.inject.strategy)(self.inject).apply(m, self.inject.payload)
+                line = (json.dumps(m) + "\n").encode()  # re-serialize the one edited message
+                self.log.append("s2c", m, poisoned=True)
+            else:
+                self.log.append("s2c", m)  # forward ORIGINAL bytes unchanged
+            await self.t.to_client(line)
