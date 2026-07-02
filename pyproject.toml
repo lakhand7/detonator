@@ -20,6 +20,7 @@ dev = ["pytest>=7"]
 
 [project.scripts]
 detonate = "detonator.cli:app"
+detonate-mcp-proxy = "detonator.cli:proxy_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
