@@ -18,6 +18,7 @@ from detonator.model.scenario import Scenario, ServerSpec
 from detonator.proxy import get as get_transport
 from detonator.proxy.log import MessageLog, resolve_run_dir
 from detonator.proxy.session import ProxySession
+from detonator.eval.run import evaluate, load_log, load_run_scenario
 
 app = typer.Typer(
     add_completion=False,
@@ -93,10 +94,67 @@ def proxy(
     spec = _select_server(scenario_obj, server)
     inject = None if record else scenario_obj.inject
     rd = resolve_run_dir(str(run_dir) if run_dir else None)
+    # Save the scenario alongside the log so `detonate eval <run-dir>` is self-contained (§8).
+    (rd / "scenario.json").write_text(scenario_obj.model_dump_json(indent=2))
     log = MessageLog(rd / "log.jsonl")
     transport = get_transport("stdio")(spec)
     asyncio.run(_run_session(transport, inject, log))
     typer.echo(f"proxy: wrote {rd / 'log.jsonl'} ({len(log.messages)} messages)", err=True)
+
+
+@app.command("eval")
+def eval_cmd(
+    run_dir: Optional[Path] = typer.Argument(
+        None, help="Run directory (contains log.jsonl + scenario.json)."
+    ),
+    replay: Optional[Path] = typer.Option(
+        None, "--replay", help="Evaluate a bare log.jsonl instead of a run dir."
+    ),
+    scenario: Optional[Path] = typer.Option(
+        None, "--scenario", help="Scenario for --replay (or to override the run dir's copy)."
+    ),
+    json_out: bool = typer.Option(False, "--json", help="Emit the Verdict as JSON."),
+) -> None:
+    """Pure `evaluate` over the log; writes report.json when given a run dir (§5, §11)."""
+    if replay is not None:
+        log_path = replay
+    elif run_dir is not None:
+        log_path = run_dir / "log.jsonl"
+    else:
+        typer.echo("eval: pass a run directory or --replay <log.jsonl>", err=True)
+        raise typer.Exit(code=2)
+
+    try:
+        if scenario is not None:
+            scen = load_scenario(scenario)
+        else:
+            beside = log_path.parent / "scenario.json"
+            if not beside.exists():
+                typer.echo(
+                    "eval: no scenario — pass --scenario or eval a run dir with scenario.json",
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            scen = load_run_scenario(beside)
+        log = load_log(log_path)
+    except (FileNotFoundError, OSError, ValueError, ValidationError) as e:
+        typer.echo(f"eval: {e}", err=True)
+        raise typer.Exit(code=2)
+
+    verdict = evaluate(scen, log, str(log_path))
+    if run_dir is not None:
+        (run_dir / "report.json").write_text(verdict.model_dump_json(indent=2))
+
+    if json_out:
+        typer.echo(verdict.model_dump_json())
+    else:
+        typer.echo(verdict.status)
+        for r in verdict.results:
+            typer.echo(f"  [{'FIRED' if r.fired else '----'}] {r.type}")
+            for ev in r.evidence:
+                typer.echo(f"      - {ev}")
+        if verdict.repro:
+            typer.echo(f"  repro: {verdict.repro}")
 
 
 def proxy_main() -> None:
