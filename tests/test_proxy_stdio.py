@@ -61,6 +61,29 @@ def test_proxy_relays_and_logs_full_round_trip(tmp_path):
     assert all(e["poisoned"] is False for e in entries)
 
 
+def test_proxy_relays_large_image_result(tmp_path):
+    """A tool result carrying a base64 image (>64 KiB) must relay without overflowing asyncio's
+    default readline limit (regression: LimitOverrunError -> 'Connection closed')."""
+    scn = _scenario(tmp_path)
+    run_dir = tmp_path / "run"
+    env = {**os.environ, "PYTHONPATH": str(REPO / "src")}
+    reqs = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+         "params": {"name": "download_image", "arguments": {}}},
+    ]
+    proc = subprocess.run(
+        [sys.executable, "-m", "detonator.cli", "proxy", "--record",
+         "--scenario", str(scn), "--run-dir", str(run_dir)],
+        input="".join(json.dumps(r) + "\n" for r in reqs).encode(),
+        capture_output=True, cwd=str(tmp_path), env=env, timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr.decode()
+    relayed = [json.loads(x) for x in proc.stdout.decode().splitlines() if x.strip()]
+    big = next(r for r in relayed if r.get("id") == 2)
+    assert len(big["result"]["content"][0]["data"]) > 64 * 1024  # the large image survived the relay
+
+
 def test_poison_then_agent_exfil_evaluates_reachable(tmp_path):
     """End-to-end exploit: the proxy splices a canary into the conversations_history result;
     a *vulnerable* agent reads it and posts it onward; `detonate eval` flags REACHABLE.

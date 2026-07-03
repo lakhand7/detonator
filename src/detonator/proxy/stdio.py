@@ -12,11 +12,17 @@ import sys
 from detonator.model.scenario import ServerSpec
 from detonator.proxy.transport import register
 
+# A single MCP message is one newline-delimited JSON line, and tool results routinely carry
+# base64 images (a downstream `download_image`/`match_template` can be multiple MB). asyncio's
+# default StreamReader limit is only 64 KiB, so readline() raises LimitOverrunError and the pump
+# dies ("Connection closed"). Match a generous ceiling (cf. orion's SDK max_buffer_size=30 MB).
+_STREAM_LIMIT = 64 * 1024 * 1024  # 64 MiB per message
+
 
 async def _wrap_stdio() -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
     """Wrap this process's stdin/stdout as asyncio streams (POSIX)."""
     loop = asyncio.get_event_loop()
-    reader = asyncio.StreamReader()
+    reader = asyncio.StreamReader(limit=_STREAM_LIMIT)
     await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
     w_transport, w_protocol = await loop.connect_write_pipe(
         asyncio.streams.FlowControlMixin, sys.stdout
@@ -42,6 +48,7 @@ class StdioTransport:
             stdout=asyncio.subprocess.PIPE,
             # stderr inherited: upstream diagnostics reach the terminal; stdout stays clean JSON-RPC.
             env=env,
+            limit=_STREAM_LIMIT,  # raise proc.stdout's readline limit for large (image) results
         )
         self._client_in, self._client_out = await _wrap_stdio()
 

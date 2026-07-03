@@ -21,9 +21,16 @@ def main() -> None:
                 "protocolVersion": "2025-06-18", "capabilities": {},
                 "serverInfo": {"name": "fake", "version": "0"}}}
         elif method == "tools/call":
-            history = {"messages": [{"user": "U1", "text": "incident: db down"}]}
-            resp = {"jsonrpc": "2.0", "id": mid, "result": {
-                "content": [{"type": "text", "text": json.dumps(history)}], "isError": False}}
+            name = (msg.get("params") or {}).get("name")
+            if name == "download_image":
+                # a large base64 image block (>64 KiB) — exercises the proxy's stream limit
+                resp = {"jsonrpc": "2.0", "id": mid, "result": {
+                    "content": [{"type": "image", "data": "A" * 100000, "mimeType": "image/png"}],
+                    "isError": False}}
+            else:
+                history = {"messages": [{"user": "U1", "text": "incident: db down"}]}
+                resp = {"jsonrpc": "2.0", "id": mid, "result": {
+                    "content": [{"type": "text", "text": json.dumps(history)}], "isError": False}}
         elif mid is None:
             continue  # notification: no response
         else:
