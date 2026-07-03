@@ -129,7 +129,7 @@ def test_poison_then_agent_exfil_evaluates_reachable(tmp_path):
         #      upstream's stdout closes, that loop ends too. Now both pumps are done, so
         #      asyncio.gather(_pump_c2s, _pump_s2c) returns and ProxySession.run() returns.
         #   4. Log is closed/flushed. run() returning hits the finally in _run_session, which calls
-        #      log.close() (MessageLog already flush()es after every message, so it's written
+        #      log.close() (MessageLog already flushes after every message, so it's written
         #      incrementally; close() finalizes the file handle). Then the proxy process exits.
         stdin.close()
         proc.wait(timeout=15)

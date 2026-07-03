@@ -6,6 +6,7 @@ in their own modules.
 """
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,7 @@ from detonator.proxy import get as get_transport
 from detonator.proxy.log import MessageLog, resolve_run_dir
 from detonator.proxy.session import ProxySession
 from detonator.eval.run import evaluate, load_log, load_run_scenario
+from detonator.target import apply_config, proxy_entry, restore_config
 
 app = typer.Typer(
     add_completion=False,
@@ -155,6 +157,57 @@ def eval_cmd(
                 typer.echo(f"      - {ev}")
         if verdict.repro:
             typer.echo(f"  repro: {verdict.repro}")
+
+
+config_app = typer.Typer(
+    no_args_is_help=True, help="Print / apply / restore the target's MCP config entry (§11)."
+)
+app.add_typer(config_app, name="config")
+
+
+@config_app.command("show")
+def config_show(
+    scenario: Path = typer.Argument(..., help="Scenario YAML."),
+    server: Optional[str] = typer.Option(None, "--server", help="Which scenario.servers entry."),
+) -> None:
+    """Print the MCP server entry JSON to paste into a target's config (§11)."""
+    try:
+        s = load_scenario(scenario)
+    except (ValidationError, ValueError, OSError) as e:
+        typer.echo(f"config show: {e}", err=True)
+        raise typer.Exit(code=1)
+    srv = server or (next(iter(s.servers)) if len(s.servers) == 1 else None)
+    if srv is None:
+        raise typer.BadParameter(f"pass --server (one of {list(s.servers)})")
+    typer.echo(json.dumps({"mcpServers": {srv: proxy_entry(scenario, srv)}}, indent=2))
+
+
+@config_app.command("apply")
+def config_apply(
+    runbook: Path = typer.Option(..., "--runbook", help="Target runbook (§12)."),
+    scenario: Path = typer.Option(..., "--scenario", help="Scenario YAML."),
+) -> None:
+    """Patch the target's MCP config to launch `detonate proxy`; back up the original (§11)."""
+    try:
+        load_scenario(scenario)  # fail closed on an invalid scenario before touching the target
+        backup = apply_config(runbook, scenario)
+    except (FileNotFoundError, KeyError, ValueError, ValidationError, OSError) as e:
+        typer.echo(f"config apply: {e}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"patched target MCP config; backup at {backup}")
+
+
+@config_app.command("restore")
+def config_restore(
+    runbook: Path = typer.Option(..., "--runbook", help="Target runbook (§12)."),
+) -> None:
+    """Restore the target's MCP config from backup (§11)."""
+    try:
+        cfg = restore_config(runbook)
+    except (FileNotFoundError, KeyError, ValueError, OSError) as e:
+        typer.echo(f"config restore: {e}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"restored {cfg}")
 
 
 def proxy_main() -> None:
