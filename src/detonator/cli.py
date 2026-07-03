@@ -21,6 +21,7 @@ from detonator.proxy.log import MessageLog, resolve_run_dir
 from detonator.proxy.session import ProxySession
 from detonator.eval.run import evaluate, load_log, load_run_scenario
 from detonator.target import apply_config, proxy_entry, restore_config
+from detonator.inventory import find_scenarios, find_targets
 
 app = typer.Typer(
     add_completion=False,
@@ -208,6 +209,21 @@ def config_restore(
         typer.echo(f"config restore: {e}", err=True)
         raise typer.Exit(code=1)
     typer.echo(f"restored {cfg}")
+
+
+@app.command("list")
+def list_cmd() -> None:
+    """List scenarios (scenarios/) and targets (targets/) under the current directory (§11)."""
+    scenarios = find_scenarios()
+    targets = find_targets()
+    typer.echo("scenarios:")
+    for s in scenarios:
+        typer.echo(f"  {s.name}")
+    typer.echo("targets:")
+    for t in targets:
+        typer.echo(f"  {t.parent.name}  ({t})")
+    if not scenarios and not targets:
+        typer.echo("  (none — run from a directory containing scenarios/ or targets/)")
 
 
 def proxy_main() -> None:
