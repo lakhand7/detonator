@@ -24,6 +24,7 @@ class Inject(BaseModel):
     where: Literal["result", "description"] = "result"
     strategy: str = "splice"  # registry key -> InjectTransform
     payload: str
+    path: str | None = None  # optional JSON Pointer (RFC 6901) into the decoded result; splice targets it
 
 
 class CanaryExfilSpec(BaseModel):
