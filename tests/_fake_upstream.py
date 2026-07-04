@@ -27,6 +27,12 @@ def main() -> None:
                 resp = {"jsonrpc": "2.0", "id": mid, "result": {
                     "content": [{"type": "image", "data": "A" * 100000, "mimeType": "image/png"}],
                     "isError": False}}
+            elif name == "noisy_log":
+                # leak a non-JSON line onto stdout (the MCP channel), as a logging sink would
+                sys.stdout.write("2026-01-01 00:00:00 | WARNING | app.mod: a stray log line\n")
+                sys.stdout.flush()
+                resp = {"jsonrpc": "2.0", "id": mid, "result": {
+                    "content": [{"type": "text", "text": "ok"}], "isError": False}}
             else:
                 history = {"messages": [{"user": "U1", "text": "incident: db down"}]}
                 resp = {"jsonrpc": "2.0", "id": mid, "result": {

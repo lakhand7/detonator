@@ -9,10 +9,30 @@ s2c and is wired in behind the InjectTransform seam in Module 3; in record mode
 
 import asyncio
 import json
+import sys
 
 from detonator.model.scenario import Inject
 from detonator.poison import get as get_strategy, should_poison
 from detonator.proxy.transport import Transport
+
+
+def _as_message(direction: str, line: bytes):
+    """Parse a wire line into a JSON-RPC object, or return None if it isn't one.
+
+    MCP stdio is newline-delimited JSON-RPC, but real servers sometimes leak non-protocol lines
+    onto stdout (e.g. a logging library with a stdout sink). Such a line is not a message: skip it
+    rather than crash the pump, and do NOT forward it (that would just corrupt the peer's stream).
+    It's surfaced on stderr so the upstream's misbehaviour stays visible.
+    """
+    try:
+        parsed = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+    preview = line[:200].decode("utf-8", "replace").strip()
+    print(f"detonate proxy: skipped non-JSON-RPC {direction} line: {preview}", file=sys.stderr, flush=True)
+    return None
 
 
 class ProxySession:
@@ -27,7 +47,9 @@ class ProxySession:
 
     async def _pump_c2s(self) -> None:
         async for line in self.t.c2s():
-            m = json.loads(line)
+            m = _as_message("c2s", line)
+            if m is None:  # stray non-JSON-RPC line (e.g. an upstream log) — skip, don't forward
+                continue
             if m.get("method") == "tools/call":  # record id->tool for correlation
                 params = m.get("params") or {}
                 self._pending[m.get("id")] = params.get("name", "")
@@ -36,7 +58,9 @@ class ProxySession:
 
     async def _pump_s2c(self) -> None:
         async for line in self.t.s2c():
-            m = json.loads(line)
+            m = _as_message("s2c", line)
+            if m is None:  # stray non-JSON-RPC line (e.g. an upstream log) — skip, don't forward
+                continue
             tool = self._pending.pop(m.get("id"), None)  # correlated tool for this result
             if self.inject and should_poison(m, tool, self.inject):
                 m = get_strategy(self.inject.strategy)(self.inject).apply(m, self.inject.payload)

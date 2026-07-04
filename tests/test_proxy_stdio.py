@@ -84,6 +84,31 @@ def test_proxy_relays_large_image_result(tmp_path):
     assert len(big["result"]["content"][0]["data"]) > 64 * 1024  # the large image survived the relay
 
 
+def test_proxy_skips_non_jsonrpc_stdout_pollution(tmp_path):
+    """A stray non-JSON line on the upstream's stdout (e.g. a logging sink) must be skipped, not
+    crash the pump (regression: json.loads -> pump dies -> 'Connection closed')."""
+    scn = _scenario(tmp_path)
+    run_dir = tmp_path / "run"
+    env = {**os.environ, "PYTHONPATH": str(REPO / "src")}
+    reqs = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+         "params": {"name": "noisy_log", "arguments": {}}},
+    ]
+    proc = subprocess.run(
+        [sys.executable, "-m", "detonator.cli", "proxy", "--record",
+         "--scenario", str(scn), "--run-dir", str(run_dir)],
+        input="".join(json.dumps(r) + "\n" for r in reqs).encode(),
+        capture_output=True, cwd=str(tmp_path), env=env, timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr.decode()
+    # only valid JSON-RPC reached the client (the stray line was dropped, not forwarded)
+    relayed = [json.loads(x) for x in proc.stdout.decode().splitlines() if x.strip()]
+    assert {r["id"] for r in relayed} == {1, 2}
+    # and the drop was surfaced on the proxy's stderr
+    assert b"skipped non-JSON-RPC" in proc.stderr
+
+
 def test_poison_then_agent_exfil_evaluates_reachable(tmp_path):
     """End-to-end exploit: the proxy splices a canary into the conversations_history result;
     a *vulnerable* agent reads it and posts it onward; `detonate eval` flags REACHABLE.
