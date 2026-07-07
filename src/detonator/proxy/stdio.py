@@ -15,7 +15,7 @@ from detonator.proxy.transport import register
 # A single MCP message is one newline-delimited JSON line, and tool results routinely carry
 # base64 images (a downstream `download_image`/`match_template` can be multiple MB). asyncio's
 # default StreamReader limit is only 64 KiB, so readline() raises LimitOverrunError and the pump
-# dies ("Connection closed"). Match a generous ceiling (cf. orion's SDK max_buffer_size=30 MB).
+# dies ("Connection closed"). Match a generous ceiling in line with common MCP SDK buffer sizes.
 _STREAM_LIMIT = 64 * 1024 * 1024  # 64 MiB per message
 
 
