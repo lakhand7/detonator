@@ -1,0 +1,4 @@
+# The interactive explainer is documentation, not source — keep it out of the
+# GitHub language stats so the repo reads as the Python tool it is.
+docs/detonator-explainer.html linguist-documentation
+*.html linguist-documentation

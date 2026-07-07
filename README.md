@@ -130,7 +130,9 @@ a Protocol + module registry + `@register` decorator:
 - **Tripwire** — `canary_exfil`, `unauthorized_tool` over the MCP log (V1); `egress`/`fs_audit`/
   `syscall`/`approval_bypass` deferred (they need the isolation tier).
 
-See `DESIGN.md` for the full spec, and `docs/stdio-and-mcp.md` for a primer on how stdio + MCP fit together.
+See `DESIGN.md` for the full spec, `docs/stdio-and-mcp.md` for a primer on how stdio + MCP fit
+together, and `docs/detonator-explainer.html` for a self-contained visual walkthrough (open it in a
+browser).
 
 ## Scope (V1)
 
