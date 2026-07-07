@@ -1,5 +1,9 @@
 # detonator
 
+[![CI](https://github.com/lakhand7/detonator/actions/workflows/ci.yml/badge.svg)](https://github.com/lakhand7/detonator/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
 **Dynamic exploitability testing for AI agents and the MCP servers they use.**
 
 Static AI/MCP scanners answer *"could this be dangerous?"* — high recall, high false positives.
@@ -35,6 +39,8 @@ The verdict is authored by pure code (`detonate eval`), never by the orchestrato
 ## Install
 
 ```bash
+git clone https://github.com/lakhand7/detonator.git
+cd detonator
 uv venv && uv pip install -e ".[dev]"   # or: pip install -e ".[dev]"
 ```
 
@@ -86,6 +92,24 @@ There's no target-specific code in this repo. To test your own agent, write a ru
 | `detonate proxy --scenario S --server N` | run AS the target's MCP server (launched *by* the target) |
 | `detonate eval <run-dir> \| --replay <log> [--json]` | the deterministic verdict; writes `report.json` |
 | `detonate list` | list scenarios and targets in the tree |
+
+## Repository layout
+
+```
+src/detonator/        the package
+  ├─ model/           frozen value objects: scenario, wire messages, context, verdict
+  ├─ proxy/           the async stdio relay — transport, session, poison-and-log
+  ├─ poison/          inject transforms (splice, description) + JSON Pointer targeting
+  ├─ eval/            deterministic tripwires (canary_exfil, unauthorized_tool) + runner
+  ├─ inventory.py     scenario/target discovery for `detonate list`
+  └─ cli.py           the `detonate` CLI
+scenarios/            attack definitions (poison + tripwires), e.g. the Slack injection
+targets/              runbooks describing how to launch a benign task against an agent
+fixtures/             hand-authored golden JSON-RPC logs for hermetic replay tests
+orchestrator/         the Claude Code red-team skill (SKILL.md + RED-TEAM.md)
+tests/                hermetic suite — pure-Python fake MCP upstream, no Node/tokens
+DESIGN.md             the full design spec; docs/ has supporting primers
+```
 
 ## Orchestrator (Claude Code skill)
 

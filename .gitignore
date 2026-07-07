@@ -20,6 +20,12 @@ uv.lock
 # detonate runtime output
 runs/
 
+# Internal red-team targets — reference private infrastructure (bucket names, hosts,
+# local absolute paths) and are intentionally kept out of this public repo. Delete these
+# lines only after scrubbing the files if you ever intend to publish them.
+scenarios/orion-*
+targets/orion-image-gen/
+
 # OS / editor
 .DS_Store
 .idea/
